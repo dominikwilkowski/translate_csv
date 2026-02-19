@@ -1,10 +1,8 @@
 mod csv;
-mod network;
 mod translate;
 
 use crate::{
 	csv::{CsvParser, export},
-	network::reconnect_and_wait,
 	translate::Translator,
 };
 
@@ -13,6 +11,8 @@ use rand::RngExt;
 use std::{
 	fs::{File, OpenOptions},
 	io::{BufReader, BufWriter, Write},
+	thread::sleep,
+	time::Duration,
 };
 
 const CSV_INPUT_PATH: &str = "csv/input.csv";
@@ -33,6 +33,12 @@ fn random_email(max_len: usize) -> String {
 	format!("{name}@gmail.com")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum State {
+	Working,
+	Waiting,
+}
+
 fn main() {
 	let reader = BufReader::new(File::open(CSV_INPUT_PATH).unwrap());
 	let mut output_file = BufWriter::new(OpenOptions::new().create(true).append(true).open(CSV_EXPORT_PATH).unwrap());
@@ -42,15 +48,20 @@ fn main() {
 	// can we rotate emails?
 	let mut translator = Translator::new(Some(random_email(5)));
 	let mut output = String::new();
+	let mut state = State::Working;
 
-	for row in csv_file.skip(35286) {
+	for cell in csv_file.skip(42158) {
 		loop {
-			match translator.translate(&row[8]) {
-				Ok(row8) => {
-					let mut output_row = Vec::with_capacity(10);
-					output_row.extend(row.iter().take(8).cloned());
-					output_row.push(row8);
-					output_row.push(row[9].clone());
+			match translator.translate(&cell[3]) {
+				Ok(desc) => {
+					if state == State::Waiting {
+						state = State::Working;
+						println!("\x1B[42m\x1B[37m Translation working again!\x1B[0m");
+					}
+					let mut output_row = Vec::with_capacity(11);
+					output_row.extend(cell.iter().take(3).cloned());
+					output_row.push(desc);
+					output_row.extend(cell.iter().skip(4).take(7).cloned());
 
 					output.clear();
 					export(&vec![output_row], &mut output);
@@ -60,8 +71,11 @@ fn main() {
 					break;
 				},
 				Err(error) => {
-					let _ = reconnect_and_wait("NordVPN NordLynx");
-					eprintln!("Translate failed: {error}");
+					if state == State::Working {
+						state = State::Waiting;
+						println!("\x1B[41m\x1B[37m Translation failed with error: {error} • Retrying!\x1B[0m");
+					}
+					sleep(Duration::from_millis(500));
 					translator = Translator::new(Some(random_email(6)));
 				},
 			}
