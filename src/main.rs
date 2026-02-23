@@ -50,7 +50,7 @@ fn main() {
 	let mut output = String::new();
 	let mut state = State::Working;
 
-	for cell in csv_file.skip(42158) {
+	for cell in csv_file.skip(0) {
 		loop {
 			match translator.translate(&cell[3]) {
 				Ok(desc) => {
